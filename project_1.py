@@ -557,3 +557,167 @@ class CandidatesSearch:
                     result.append([result_candidate_id, candidate_id[2]])
 
         return result
+
+
+class CMSManager:
+    """
+    A class that manages candidate CMS operations for a specific project.
+
+    Parameters:
+    - project_id (str): The ID of the project in the CMS.
+
+    Usage:
+    ```
+    manager = CMSManager(project_id)
+    project_name = manager.get_project_name()
+    print(f"Managing CMS for project: {project_name}")
+    ```
+    """
+    def __init__(self, project_id: str) -> None:
+        self.database = DatabaseManager('mysql')
+        self.cms_data = self.database.read_data('p1_cms')
+        self.candidate_data = self.database.read_data('p1_candidates')
+        self.project_data = self.database.read_data('p1_projects')
+        self.project_id = project_id
+
+    def get_project_name(self):
+
+        """
+        Retrieves the name of the project associated with the specified project ID.
+
+        Returns:
+        str: The name of the project.
+        """
+
+        project_name = [name[3] for name in self.project_data if name[1] == self.project_id]
+        return project_name
+
+    def add_candidates_to_project(self):
+        """
+        Searches and updates the CMS database with candidates who are part of the project, not added to the project before, and not blacklisted.
+
+        Returns:
+        str: A message indicating the candidates added to the CMS database.
+        """
+        candidates = [candidate[1] for candidate in self.candidate_data if candidate[19]
+                      == self.project_id and candidate[20] == 'False']
+        candidates_not_added = [candidate for candidate in candidates if (
+            self.project_id, candidate) not in [(data[1], data[2]) for data in self.cms_data]]
+
+        sql_query = "INSERT INTO p1_cms (project_id, candidate_id) VALUES (%s, %s)"
+
+        for candidate in candidates_not_added:
+            data = (self.project_id, candidate)
+            DatabaseManager(self.database).save_data(sql_query, data)
+
+        return f"candidates with id {candidates_not_added} added to cms database"
+
+    def get_project_data(self):
+        """
+        Returns a list of candidate data for the chosen project.
+
+        Returns:
+        List: List of candidate data for the specified project.
+        """
+        self.add_candidates_to_project()
+
+        result = []
+
+        for candidate_data in self.cms_data:
+            if candidate_data[1] == self.project_id:
+                for candidate in self.candidate_data:
+                    if candidate[1] == candidate_data[2]:
+                        candidate_data_list = list(candidate_data)[2:]
+                        candidate_data_list.insert(1, candidate[2])
+                        candidate_data_list.append('◇' if candidate[26] else '') # if candidate is interviewed
+                        candidate_data_list.append(candidate_data_list[2])
+                        candidate_data_list.pop(2)
+                        result.append(candidate_data_list)
+
+        result = [[item if item is not None else "" for idx, item in enumerate(sublist)] for sublist in result]
+        result = [[item if idx != 7 or not item else '◈' for idx, item in enumerate(sublist)] for sublist in result] 
+
+        return result
+
+    def get_candidate_note(self, candidate_id: str):
+        """
+        Retrieves the CMS note for the selected candidate ID.
+
+        Parameters:
+        - candidate_id (str): The ID of the candidate.
+
+        Returns:
+        str: The CMS note for the candidate.
+        """
+        for data in self.cms_data:
+            if data[1] == self.project_id and data[2] == candidate_id:
+                return data[3]
+
+    def update_candidate_note(self, candidate_id: str, note: str):
+        """
+        Updates the CMS note for the selected candidate ID.
+
+        Parameters:
+        - candidate_id (str): The ID of the candidate.
+        - note (str): The new CMS note to be set for the candidate.
+
+        Returns:
+        str: A message indicating that the note content has been changed.
+        """
+        sql_query = "UPDATE p1_cms SET note = %s WHERE project_id = %s AND candidate_id = %s"
+        data = (note, self.project_id, candidate_id)
+        DatabaseManager(self.database).save_data(sql_query, data)
+
+        return "Note content changed"
+
+    def update_selection_status(self, candidate_id: str, status):
+        """
+        Updates the CMS selection status for the selected candidate ID.
+
+        Parameters:
+        - candidate_id (str): The ID of the candidate.
+        - status (tuple): A tuple representing the new selection status.
+
+        Returns:
+        str: A message indicating that the candidate's selection status has been changed.
+        """
+        sql_query = "UPDATE p1_cms SET status_accepted = %s, status_reserve = %s, status_rejected = %s WHERE project_id = %s AND candidate_id = %s"
+        data = (status[0], status[1], status[2], self.project_id, candidate_id)
+        DatabaseManager(self.database).save_data(sql_query, data)
+
+        return f"Candidate selection status has changed"
+
+    def update_candidate_rating(self, candidate_id: str, score: int):
+        """
+        Updates the CMS candidate rating status for the selected candidate ID.
+
+        Parameters:
+        - candidate_id (str): The ID of the candidate.
+        - score (int): The new rating score to be set for the candidate.
+
+        Returns:
+        str: A message indicating that the score for the candidate has been changed.
+        """
+        sql_query = "UPDATE p1_cms SET score = %s WHERE project_id = %s AND candidate_id = %s"
+        data = (score, self.project_id, candidate_id)
+        DatabaseManager(self.database).save_data(sql_query, data)
+
+        return f"Score for candidate_id: {candidate_id} has changed to: {score}"
+
+    def select_update(self, input_data):
+        """
+        Calls status or score update depending on the size of the input.
+
+        Parameters:
+        - input_data (List): A list of data for updating status or score.
+
+        Returns:
+        str: A message indicating the success of the status or score update.
+        """
+        if len(input_data) == 3:
+            self.update_candidate_rating(input_data[1], input_data[2])
+            return "Candidate score successfully updated"
+        elif len(input_data) == 5:
+            status = input_data[2:]
+            self.update_selection_status(input_data[1], status)
+            return "Candidate status successfully updated"
