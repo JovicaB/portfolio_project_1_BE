@@ -419,3 +419,141 @@ class Candidates:
 
         DatabaseManager(self.database).save_data(sql_query, data)
         return f"client data with id {data[0]} edited"
+
+
+class CandidatesSearch:
+    """
+    A class for processing candidate search condition and structuring results
+    """
+    def __init__(self, input_conditions: List) -> None:
+        self.database = DatabaseManager('mysql')
+        self.candidate_data = self.database.read_data('p1_candidates')
+        self.input_conditions = input_conditions
+
+    def gender(self, gender: str = "All"):
+
+        """
+        Filters candidates by gender.
+
+        Parameters:
+        - gender (str): The gender to filter by. Should be 'M', 'F', or 'All' for all genders.
+
+        Returns:
+        List: List of candidate IDs matching the specified gender.
+        """
+
+        valid_genders = {"M", "F", "All"}
+        if gender not in valid_genders:
+            raise ValueError("Invalid gender argument. Please provide 'M', 'F', or 'All'.")
+
+        if gender == "All":
+            return [candidate[1] for candidate in self.candidate_data]
+
+        return [candidate[1] for candidate in self.candidate_data if candidate[3] == gender]
+
+    def age(self, younger_then: str = "", older_then: str = ""):
+
+        """
+        Filters candidates by age range.
+
+        Parameters:
+        - younger_then (str): The maximum age for candidates.
+        - older_then (str): The minimum age for candidates.
+
+        Returns:
+        List: List of candidate IDs within the specified age range.
+        """
+                
+        younger_then = int(younger_then) if younger_then != "" else ""
+        older_then = int(older_then) if older_then != "" else ""
+        current_year = datetime.date.today().year
+
+        if younger_then != "" and older_then != "":
+            return [candidate[1] for candidate in self.candidate_data if current_year - candidate[4] < younger_then and current_year - candidate[4] > older_then]
+        elif younger_then != "":
+            return [candidate[1] for candidate in self.candidate_data if current_year - candidate[4] < younger_then]
+        elif older_then != "":
+            return [candidate[1] for candidate in self.candidate_data if current_year - candidate[4] > older_then]
+        else:
+            return [candidate[1] for candidate in self.candidate_data]
+
+    def condition_search(self, input, full_str: bool, data_index):
+        """
+        Searches for candidates based on various conditions.
+
+        Parameters:
+        - input: The search condition.
+        - full_str (bool): If True, perform a full string search; if False, perform a partial string search.
+        - data_index: The index of the candidate data attribute to search in.
+
+        Returns:
+        List: List of candidate IDs matching the search condition.
+        """
+        input_str = str(input).lower()
+        if full_str:
+            return [data[1] for data in self.candidate_data if str(data[data_index]).lower() == input_str]
+        else:
+            return [data[1] for data in self.candidate_data if input_str in str(data[data_index]).lower()]
+
+    def merge_search_results(self):
+        """
+        Merges the results of various search conditions.
+
+        Returns:
+        List: List of search results for each condition.
+        """
+        raw_results = [
+            self.gender(self.input_conditions[0]),  # gender
+            self.age(younger_then=self.input_conditions[1], older_then=self.input_conditions[2]),  # age
+            self.condition_search(self.input_conditions[3], False, 5),  # city
+            self.condition_search(
+                self.input_conditions[4], False, 11),  # education major
+            self.condition_search(
+                self.input_conditions[5], False, 16),  # work experience
+            self.condition_search(
+                self.input_conditions[6], False, 12),  # business skills
+            self.condition_search(
+                self.input_conditions[7], False, 13),  # licences
+            self.condition_search(
+                self.input_conditions[8], False, 14),  # languages
+            self.condition_search(
+                self.input_conditions[9], False, 17),  # optimal_position
+            self.condition_search(
+                self.input_conditions[10], False, 18),  # talent score
+            self.condition_search(
+                self.input_conditions[11], False, 20)  # blacklisted
+        ]
+        return raw_results
+
+    def find_common_elements(self):
+        """
+        Finds common elements among multiple search results.
+
+        Returns:
+        List: List of candidate IDs that meet all search conditions.
+        """
+        full_list = self.merge_search_results()
+
+        result = set(full_list[0])
+        for i in range(1, len(full_list)):
+            result = result & set(full_list[i])
+
+        return list(result)
+
+    def search_results(self):
+        """
+        Retrieves candidate names based on candidate ID and returns the final search list.
+
+        Returns:
+        List: Nested list of candidate IDs and their names [['0003', 'Jakemiv Ivana'], ...]
+        """
+        candidates_id_list = self.find_common_elements()
+        data = self.candidate_data
+        result = []
+
+        for candidate_id in data:
+            for result_candidate_id in candidates_id_list:
+                if result_candidate_id == candidate_id[1]:
+                    result.append([result_candidate_id, candidate_id[2]])
+
+        return result
